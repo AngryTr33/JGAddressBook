@@ -57,5 +57,8 @@ namespace JGAddressBook.Models
 
         //TODO:  Add Virtuals
 
+        public virtual AppUser? AppUser { get; set; }
+        public virtual ICollection<Category> Categories { get; set; } = new HashSet<Category>();
+       
     }
 }
