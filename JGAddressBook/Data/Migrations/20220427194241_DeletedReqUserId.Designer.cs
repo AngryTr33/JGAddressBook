@@ -3,6 +3,7 @@ using System;
 using JGAddressBook.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace JGAddressBook.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20220427194241_DeletedReqUserId")]
+    partial class DeletedReqUserId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -120,7 +122,6 @@ namespace JGAddressBook.Data.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("AppUserId")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Name")
@@ -150,7 +151,6 @@ namespace JGAddressBook.Data.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("AppUserId")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<DateTime?>("BirthDate")
@@ -354,9 +354,7 @@ namespace JGAddressBook.Data.Migrations
                 {
                     b.HasOne("JGAddressBook.Models.AppUser", "AppUser")
                         .WithMany("Categories")
-                        .HasForeignKey("AppUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("AppUserId");
 
                     b.Navigation("AppUser");
                 });
@@ -365,9 +363,7 @@ namespace JGAddressBook.Data.Migrations
                 {
                     b.HasOne("JGAddressBook.Models.AppUser", "AppUser")
                         .WithMany("Contacts")
-                        .HasForeignKey("AppUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("AppUserId");
 
                     b.Navigation("AppUser");
                 });
