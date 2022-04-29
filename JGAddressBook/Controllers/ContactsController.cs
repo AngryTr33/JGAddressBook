@@ -11,6 +11,8 @@ using JGAddressBook.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
 using JGAddressBook.Enums;
+using JGAddressBook.Services.Interfaces;
+using JGAddressBook.Services;
 
 namespace JGAddressBook.Controllers
 {
@@ -18,22 +20,54 @@ namespace JGAddressBook.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly UserManager<AppUser> _userManager; //Add
+        private readonly IAddressBookService _addressBookService;
+        private readonly IImageService _imageService;
+        private readonly SearchService _searchService;
 
-        public ContactsController(ApplicationDbContext context, UserManager<AppUser> userManager)
+        public ContactsController(ApplicationDbContext context,
+                                  UserManager<AppUser> userManager,//Add
+                                  IAddressBookService addressBookService,
+                                  IImageService imageService,
+                                  SearchService searchService)
         {
             _context = context;
             _userManager = userManager; //Add
+            _addressBookService = addressBookService;
+            _imageService = imageService;
+            _searchService = searchService;
         }
 
         // GET: Contacts
         [Authorize]//Add
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int id)
         {
-            AppUser appUser = await _userManager.GetUserAsync(User); //Add
+            List<Contact> contacts = new List<Contact>();
 
-            List<Contact> contacts = await _context.Contacts.Where(c => c.AppUserId == appUser.Id).ToListAsync(); //Alter
-
+            string appUserId = _userManager.GetUserId(User);
+            AppUser appUser = _context.Users
+                                      .Include(c => c.Contacts)
+                                      .ThenInclude(c => c.Categories)
+                                      .FirstOrDefault(u => u.Id == appUserId);
+            if(id == 0)
+            {
+                contacts = appUser.Contacts.ToList();
+            }
+            else
+            {
+                contacts = appUser.Categories.FirstOrDefault(c => c.Id == id).Contacts.ToList();
+            }
+            ViewData["CategoryId"] = new SelectList(appUser.Categories,"Id","Name",id);
             return View(contacts);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult SearchContacts(string searchString)
+        {
+            var userId = _userManager.GetUserId(User);
+            List<Contact> contacts = _searchService.SearchContacts(searchString, userId).ToList();
+
+            return View(nameof(Index), contacts);
         }
 
         // GET: Contacts/Details/5
@@ -46,20 +80,25 @@ namespace JGAddressBook.Controllers
 
             Contact contact = await _context.Contacts
                 .Include(c => c.AppUser)
+                .Include(c => c.Categories)
                 .FirstOrDefaultAsync(m => m.Id == id);
+
             if (contact == null)
             {
                 return NotFound();
             }
-
             return View(contact);
         }
 
         // GET: Contacts/Create
         [Authorize]//Add
-        public IActionResult Create()
+        public async Task<IActionResult> Create()
         {
+            string appUserId = _userManager.GetUserId(User);
+
+
             ViewData["StatesList"] = new SelectList(Enum.GetValues(typeof(States)).Cast<States>().ToList()); //Add Enum
+            ViewData["CategoryList"] = new MultiSelectList(await _addressBookService.GetUserCategoriesAsync(appUserId), "Id", "Name");//Add for drop down list
             return View();
         }
 
@@ -68,7 +107,7 @@ namespace JGAddressBook.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("Id,FirstName,LastName,BirthDate,Address1,Address2,City,State,ZipCode,Email,PhoneNumber")] Contact contact) //Removed Bindings
+        public async Task<IActionResult> Create([Bind("Id,FirstName,LastName,BirthDate,Address1,Address2,City,State,ZipCode,Email,PhoneNumber,ImageFile")] Contact contact, List<int> categoryList) //Removed Bindings
         {
             ModelState.Remove("AppUserId"); //Add so that AppUserId that is required in model but skipped in create()
 
@@ -84,15 +123,26 @@ namespace JGAddressBook.Controllers
 
                 if (contact.ImageFile != null)
                 {
-                    //TODO: Image Service
+                    //TODO: Image Service Dependancy Injection
+                    contact.ImageData = await _imageService.ConvertFileToByteArrayAsync(contact.ImageFile);
+                    contact.ImageType = contact.ImageFile.ContentType;
                 }
 
                 _context.Add(contact);
                 await _context.SaveChangesAsync();
 
+                //Add Contact to Categories
+                foreach(int categoryId in categoryList)
+                {
+                await _addressBookService.AddContactToCategoryAsync(categoryId, contact.Id);
+                }
+
                 return RedirectToAction(nameof(Index));
             }
-            ViewData["StatesList"] = new SelectList(Enum.GetValues(typeof(States)).Cast<States>().ToList()); //Add Enum on reload if Model State is False
+            string appUserId = _userManager.GetUserId(User);
+
+            ViewData["StatesList"] = new SelectList(Enum.GetValues(typeof(States)).Cast<States>().ToList());//Add Enum on reload if Model State is False
+            ViewData["CategoryList"] = new MultiSelectList(await _addressBookService.GetUserCategoriesAsync(appUserId), "Id", "Name");//Add for drop down list
             return View(contact);
         }
 
@@ -111,7 +161,11 @@ namespace JGAddressBook.Controllers
             {
                 return NotFound();
             }
+
+            string appUserId = _userManager.GetUserId(User);//Add
+
             ViewData["StatesList"] = new SelectList(Enum.GetValues(typeof(States)).Cast<States>().ToList()); //Add Enum on reload if Model State is False
+            ViewData["CategoryList"] = new MultiSelectList(await _addressBookService.GetUserCategoriesAsync(appUserId),"Id","Name", await _addressBookService.GetContactCategoryIdsAsync(contact.Id));//Add
             return View(contact);
         }
 
@@ -120,7 +174,7 @@ namespace JGAddressBook.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("Id,AppUserId,FirstName,LastName,BirthDate,Address1,Address2,City,State,ZipCode,Email,PhoneNumber,Created,ImageData,ImageType")] Contact contact)
+        public async Task<IActionResult> Edit(int id, [Bind("Id,AppUserId,FirstName,LastName,BirthDate,Address1,Address2,City,State,ZipCode,Email,PhoneNumber,Created,ImageFile,ImageData,ImageType")] Contact contact, List<int> categoryList)
         {
             if (id != contact.Id)
             {
@@ -141,10 +195,24 @@ namespace JGAddressBook.Controllers
                     if (contact.ImageFile != null)//
                     {
                         //TODO: Image Service//
+                        contact.ImageData = await _imageService.ConvertFileToByteArrayAsync(contact.ImageFile);
+                        contact.ImageType = contact.ImageFile.ContentType;
                     }
 
                     _context.Update(contact);
                     await _context.SaveChangesAsync();
+
+                    List<Category> oldCategories = (await _addressBookService.GetContactCategoriesAsync(contact.Id)).ToList();
+                    foreach  (Category category in oldCategories)
+                    {
+                        await _addressBookService.RemoveContactFromCategoryAsync(category.Id, contact.Id);
+                    }
+
+                    //Add Contact to Categories
+                    foreach (int categoryId in categoryList)
+                    {
+                        await _addressBookService.AddContactToCategoryAsync(categoryId, contact.Id);
+                    }
                 }
                 catch (DbUpdateConcurrencyException)
                 {

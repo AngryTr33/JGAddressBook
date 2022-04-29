@@ -1,4 +1,7 @@
 ﻿@model JGAddressBook.Models.Contact
+@using JGAddressBook.Services.Interfaces
+
+@inject IImageService ImageService
 
 @{
     ViewData["Title"] = "Edit";
@@ -10,11 +13,11 @@
 <hr />
 <div class="row">
     <div class="col-md-4">
-        <form asp-action="Edit">
+        <form asp-action="Edit" enctype="multipart/form-data">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
             <input type="hidden" asp-for="Id" />
-            <input type="hidden" asp-for="AppUserId" /> @*Add*@
-            <input type="hidden" asp-for="Created" /> 
+            <input type="hidden" asp-for="AppUserId" /> @*Add Because the Model needs this info but the user doesnt*@
+            <input type="hidden" asp-for="Created" />
             <input type="hidden" asp-for="ImageData" />
             <input type="hidden" asp-for="ImageType" />
 
@@ -70,6 +73,30 @@
             </div>
 
             @*TODO: Image Info*@
+            <div class="form-group">
+                <label asp-for="ImageFile" class="control-label"></label>
+                <input asp-for="ImageFile" class="form-control" accept=".png,.jpg,.jpeg,.gif"
+                       onchange="document.getElementById('contactImage').src = window.URL.createObjectURL(this.files[0])" />
+                <span asp-validation-for="ImageFile" class="text-danger"></span>
+            </div>
+
+            <div class="form-group">
+                @if (Model.ImageData != null)
+                {
+                    <img id="contactImage" src="@ImageService.ConvertByteArrayToFile(Model.ImageData, Model.ImageType)" class="img-fluid img-thumbnail w-25 mt-3">
+                }
+                else
+                {
+                    <img id="contactImage" class="img-fluid img-thumbnail mt-2" style="width:120px;height:120px" src="https://cdn.icon-icons.com/icons2/233/PNG/512/Contacts_26253.png">
+                }
+            </div>
+
+            @*Categories List*@
+            <div class="form-group">
+                <label asp-for="Categories" class="control-label"></label>
+                <select name="CategoryList" asp-items="ViewBag.CategoryList" class="form-control" multiple></select>
+            </div>
+
 
             <div class="form-group">
                 <input type="submit" value="Save" class="btn btn-primary" />
@@ -83,5 +110,7 @@
 </div>
 
 @section Scripts {
-    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    @{
+    await Html.RenderPartialAsync("_ValidationScriptsPartial");
+}
 }

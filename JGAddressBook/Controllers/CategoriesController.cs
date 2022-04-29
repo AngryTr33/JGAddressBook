@@ -10,6 +10,7 @@ using JGAddressBook.Data;
 using JGAddressBook.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
+using JGAddressBook.Services.Interfaces;
 
 namespace JGAddressBook.Controllers
 {
@@ -18,7 +19,8 @@ namespace JGAddressBook.Controllers
         private readonly ApplicationDbContext _context;
         private readonly UserManager<AppUser> _userManager; //Add
 
-        public CategoriesController(ApplicationDbContext context, UserManager<AppUser> userManager)
+        public CategoriesController(ApplicationDbContext context, 
+                                    UserManager<AppUser> userManager)//Add
         {
             _context = context;
             _userManager = userManager; //Add
@@ -66,7 +68,7 @@ namespace JGAddressBook.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("Id,AppUserId,Name")] Category category)
+        public async Task<IActionResult> Create([Bind("Id,Name")] Category category)
         {
             ModelState.Remove("AppUserId");//Add
 
@@ -90,6 +92,7 @@ namespace JGAddressBook.Controllers
             }
 
             Category category = await _context.Categories.FindAsync(id);
+
             if (category == null)
             {
                 return NotFound();
