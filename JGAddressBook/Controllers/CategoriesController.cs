@@ -11,6 +11,7 @@ using JGAddressBook.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
 using JGAddressBook.Services.Interfaces;
+using JGAddressBook.Models.ViewModels;
 
 namespace JGAddressBook.Controllers
 {
@@ -18,12 +19,15 @@ namespace JGAddressBook.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly UserManager<AppUser> _userManager; //Add
+        private readonly IABEmailSender _emailSender;
 
-        public CategoriesController(ApplicationDbContext context, 
-                                    UserManager<AppUser> userManager)//Add
+        public CategoriesController(ApplicationDbContext context,
+                                    UserManager<AppUser> userManager,
+                                    IABEmailSender emailSender)//Add
         {
             _context = context;
             _userManager = userManager; //Add
+            _emailSender = emailSender;
         }
 
         // GET: Categories
@@ -35,6 +39,49 @@ namespace JGAddressBook.Controllers
             List<Category> categories = await _context.Categories.Where(c => c.AppUserId == appUser.Id).ToListAsync(); //Alter
 
             return View(categories);
+        }
+
+        [Authorize]
+        [HttpGet]
+        public async Task<IActionResult> EmailCategory(int id)
+        {
+            Category category = await _context.Categories
+                                              .Include(c => c.Contacts)
+                                              .FirstOrDefaultAsync(c => c.Id == id);
+
+            List<string> emails = category.Contacts.Select(c => c.Email).ToList();
+
+            EmailData emailData = new EmailData()
+            {
+                GroupName = category.Name,
+                EmailAddress = string.Join(";", emails),
+                Subject = $"Group Message: - {category.Name}"
+            };
+
+            EmailCategoryViewModel model = new EmailCategoryViewModel()
+            {
+                Contacts = category.Contacts.ToList(),
+                EmailData = emailData
+            };
+
+            return View(model);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EmailCategory(EmailData emailData)
+        {
+            if (ModelState.IsValid)
+            {
+                AppUser appUser = await _userManager.GetUserAsync(User);
+                string emailBody = _emailSender.ComposeEmailBody(appUser, emailData);
+
+                await _emailSender.SendEmailAsync(emailData.EmailAddress, emailData.Subject, emailBody);
+
+                return RedirectToAction("Index", "Categories");
+            }
+
+            return View();
         }
 
         // GET: Categories/Details/5

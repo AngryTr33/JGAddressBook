@@ -17,7 +17,7 @@
         <label class="form-label">CATEGORY FILTER</label>
         <div class="col-3">
             <select name="id" asp-items="@ViewBag.CategoryId" class="form-control glass-button text-white fw-bold" onchange="this.form.submit()">
-                <option></option>
+                <option>All Contacts</option>
             </select>
         </div>
     </form>
@@ -69,3 +69,22 @@
         </div>
     }
 </div>
+@section scripts{
+<!--Sweet Alerts-->
+<script>
+            var message = '@(ViewBag.SwalMessage)';
+            if(!message.includes("Error") && message != ''){
+                Swal.fire({
+                    icon:'success',
+                    title: message,
+                    showConfirmButton: true
+                })
+            }else if (message.includes("Error")){
+                Swal.fire({
+                    icon:'error',
+                    title:'Oops...',
+                    text:message
+                })
+            }
+</script>
+}

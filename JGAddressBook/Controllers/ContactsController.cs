@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Authorization;
 using JGAddressBook.Enums;
 using JGAddressBook.Services.Interfaces;
 using JGAddressBook.Services;
+using JGAddressBook.Models.ViewModels;
 
 namespace JGAddressBook.Controllers
 {
@@ -23,24 +24,29 @@ namespace JGAddressBook.Controllers
         private readonly IAddressBookService _addressBookService;
         private readonly IImageService _imageService;
         private readonly SearchService _searchService;
+        private readonly IABEmailSender _emailSender;
 
         public ContactsController(ApplicationDbContext context,
                                   UserManager<AppUser> userManager,//Add
                                   IAddressBookService addressBookService,
                                   IImageService imageService,
-                                  SearchService searchService)
+                                  SearchService searchService,
+                                  IABEmailSender emailSender)
         {
             _context = context;
             _userManager = userManager; //Add
             _addressBookService = addressBookService;
             _imageService = imageService;
             _searchService = searchService;
+            _emailSender = emailSender;
         }
 
         // GET: Contacts
         [Authorize]//Add
-        public async Task<IActionResult> Index(int id)
+        public async Task<IActionResult> Index(int id, string swalMessage = null)
         {
+            ViewData["SwalMessage"] = swalMessage;
+
             List<Contact> contacts = new List<Contact>();
 
             string appUserId = _userManager.GetUserId(User);
@@ -48,7 +54,7 @@ namespace JGAddressBook.Controllers
                                       .Include(c => c.Contacts)
                                       .ThenInclude(c => c.Categories)
                                       .FirstOrDefault(u => u.Id == appUserId);
-            if(id == 0)
+            if (id == 0)
             {
                 contacts = appUser.Contacts.ToList();
             }
@@ -56,7 +62,7 @@ namespace JGAddressBook.Controllers
             {
                 contacts = appUser.Categories.FirstOrDefault(c => c.Id == id).Contacts.ToList();
             }
-            ViewData["CategoryId"] = new SelectList(appUser.Categories,"Id","Name",id);
+            ViewData["CategoryId"] = new SelectList(appUser.Categories, "Id", "Name", id);
             return View(contacts);
         }
 
@@ -68,6 +74,55 @@ namespace JGAddressBook.Controllers
             List<Contact> contacts = _searchService.SearchContacts(searchString, userId).ToList();
 
             return View(nameof(Index), contacts);
+        }
+
+        [Authorize]
+        [HttpGet]
+        public async Task<IActionResult> EmailContact(int id)
+        {
+            Contact contact = await _context.Contacts
+                                            .Include(c => c.Categories)
+                                            .FirstOrDefaultAsync(c => c.Id == id);
+            if (contact == null)
+            {
+                return NotFound();
+            }
+            EmailData emailData = new EmailData()
+            {
+                EmailAddress = contact.Email,
+                FirstName = contact.FirstName,
+                LastName = contact.LastName
+            };
+            EmailContactViewModel model = new EmailContactViewModel()
+            {
+                Contact = contact,
+                EmailData = emailData
+            };
+            return View(model);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EmailContact(EmailData emailData)
+        {
+            if (ModelState.IsValid)
+            {
+                AppUser appUser = await _userManager.GetUserAsync(User);
+                string emailBody = _emailSender.ComposeEmailBody(appUser, emailData);
+
+                try
+                {
+                    await _emailSender.SendEmailAsync(emailData.EmailAddress, emailData.Subject, emailBody);
+                    return RedirectToAction("Index", "Contacts", new { swalMessage = "Email sent" });
+                }
+                catch (Exception)
+                {
+                    return RedirectToAction("Index", "Contacts", new { swalMessage = "Error: Email send failed!" });
+                    throw;
+                }
+
+            }
+            return View();
         }
 
         // GET: Contacts/Details/5
@@ -132,9 +187,9 @@ namespace JGAddressBook.Controllers
                 await _context.SaveChangesAsync();
 
                 //Add Contact to Categories
-                foreach(int categoryId in categoryList)
+                foreach (int categoryId in categoryList)
                 {
-                await _addressBookService.AddContactToCategoryAsync(categoryId, contact.Id);
+                    await _addressBookService.AddContactToCategoryAsync(categoryId, contact.Id);
                 }
 
                 return RedirectToAction(nameof(Index));
@@ -165,7 +220,7 @@ namespace JGAddressBook.Controllers
             string appUserId = _userManager.GetUserId(User);//Add
 
             ViewData["StatesList"] = new SelectList(Enum.GetValues(typeof(States)).Cast<States>().ToList()); //Add Enum on reload if Model State is False
-            ViewData["CategoryList"] = new MultiSelectList(await _addressBookService.GetUserCategoriesAsync(appUserId),"Id","Name", await _addressBookService.GetContactCategoryIdsAsync(contact.Id));//Add
+            ViewData["CategoryList"] = new MultiSelectList(await _addressBookService.GetUserCategoriesAsync(appUserId), "Id", "Name", await _addressBookService.GetContactCategoryIdsAsync(contact.Id));//Add
             return View(contact);
         }
 
@@ -203,7 +258,7 @@ namespace JGAddressBook.Controllers
                     await _context.SaveChangesAsync();
 
                     List<Category> oldCategories = (await _addressBookService.GetContactCategoriesAsync(contact.Id)).ToList();
-                    foreach  (Category category in oldCategories)
+                    foreach (Category category in oldCategories)
                     {
                         await _addressBookService.RemoveContactFromCategoryAsync(category.Id, contact.Id);
                     }
