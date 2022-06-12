@@ -203,6 +203,7 @@ namespace JGAddressBook.Controllers
 
         // GET: Contacts/Edit/5
         [Authorize]//Add
+        [HttpGet]
         public async Task<IActionResult> Edit(int? id)
         {
             if (id == null)
